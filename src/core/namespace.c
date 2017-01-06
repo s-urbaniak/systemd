@@ -43,6 +43,7 @@
 #include "umask-util.h"
 #include "user-util.h"
 #include "util.h"
+#include "sd-messages.h"
 
 #define DEV_MOUNT_OPTIONS (MS_NOSUID|MS_STRICTATIME|MS_NOEXEC)
 
@@ -374,11 +375,21 @@ int setup_namespace(
         unsigned n;
         int r = 0;
 
+        log_open();
+
+        log_struct_errno(LOG_ERR, -123,
+                         LOG_MESSAGE_ID(SD_MESSAGE_SPAWN_FAILED),
+                         NULL);
+
         if (mount_flags == 0)
                 mount_flags = MS_SHARED;
 
-        if (unshare(CLONE_NEWNS) < 0)
+        if (unshare(CLONE_NEWNS) < 0) {
+                log_struct_errno(LOG_ERR, -errno,
+                                 LOG_MESSAGE_ID(SD_MESSAGE_SPAWN_FAILED),
+                                 NULL);
                 return -errno;
+        }
 
         n = !!tmp_dir + !!var_tmp_dir +
                 strv_length(read_write_paths) +
@@ -392,16 +403,28 @@ int setup_namespace(
         if (n > 0) {
                 m = mounts = (BindMount *) alloca0(n * sizeof(BindMount));
                 r = append_mounts(&m, read_write_paths, READWRITE);
-                if (r < 0)
+                if (r < 0) {
+                        log_struct_errno(LOG_ERR, r,
+                                         LOG_MESSAGE_ID(SD_MESSAGE_SPAWN_FAILED),
+                                         NULL);
                         return r;
+                }
 
                 r = append_mounts(&m, read_only_paths, READONLY);
-                if (r < 0)
+                if (r < 0) {
+                        log_struct_errno(LOG_ERR, r,
+                                         LOG_MESSAGE_ID(SD_MESSAGE_SPAWN_FAILED),
+                                         NULL);
                         return r;
+                }
 
                 r = append_mounts(&m, inaccessible_paths, INACCESSIBLE);
-                if (r < 0)
+                if (r < 0) {
+                        log_struct_errno(LOG_ERR, r,
+                                         LOG_MESSAGE_ID(SD_MESSAGE_SPAWN_FAILED),
+                                         NULL);
                         return r;
+                }
 
                 if (tmp_dir) {
                         m->path = prefix_roota(root_directory, "/tmp");
@@ -433,8 +456,12 @@ int setup_namespace(
 
                         r = append_mounts(&m, STRV_MAKE(home_dir, run_user_dir, root_dir),
                                 protect_home == PROTECT_HOME_READ_ONLY ? READONLY : INACCESSIBLE);
-                        if (r < 0)
+                        if (r < 0) {
+                                log_struct_errno(LOG_ERR, r,
+                                                 LOG_MESSAGE_ID(SD_MESSAGE_SPAWN_FAILED),
+                                                 NULL);
                                 return r;
+                        }
                 }
 
                 if (protect_system != PROTECT_SYSTEM_NO) {
@@ -448,8 +475,12 @@ int setup_namespace(
                         r = append_mounts(&m, protect_system == PROTECT_SYSTEM_FULL
                                 ? STRV_MAKE(usr_dir, boot_dir, etc_dir)
                                 : STRV_MAKE(usr_dir, boot_dir), READONLY);
-                        if (r < 0)
+                        if (r < 0) {
+                                log_struct_errno(LOG_ERR, r,
+                                                 LOG_MESSAGE_ID(SD_MESSAGE_SPAWN_FAILED),
+                                                 NULL);
                                 return r;
+                        }
                 }
 
                 assert(mounts + n == m);
@@ -461,27 +492,43 @@ int setup_namespace(
         if (n > 0 || root_directory) {
                 /* Remount / as SLAVE so that nothing now mounted in the namespace
                    shows up in the parent */
-                if (mount(NULL, "/", NULL, MS_SLAVE|MS_REC, NULL) < 0)
+                if (mount(NULL, "/", NULL, MS_SLAVE|MS_REC, NULL) < 0) {
+                        log_struct_errno(LOG_ERR, -errno,
+                                         LOG_MESSAGE_ID(SD_MESSAGE_SPAWN_FAILED),
+                                         NULL);
                         return -errno;
+                }
         }
 
         if (root_directory) {
                 /* Turn directory into bind mount */
-                if (mount(root_directory, root_directory, NULL, MS_BIND|MS_REC, NULL) < 0)
+                if (mount(root_directory, root_directory, NULL, MS_BIND|MS_REC, NULL) < 0) {
+                        log_struct_errno(LOG_ERR, -errno,
+                                         LOG_MESSAGE_ID(SD_MESSAGE_SPAWN_FAILED),
+                                         NULL);
                         return -errno;
+                }
         }
 
         if (n > 0) {
                 for (m = mounts; m < mounts + n; ++m) {
                         r = apply_mount(m, tmp_dir, var_tmp_dir);
-                        if (r < 0)
+                        if (r < 0) {
+                                log_struct_errno(LOG_ERR, r,
+                                                 LOG_MESSAGE_ID(SD_MESSAGE_SPAWN_FAILED),
+                                                 NULL);
                                 goto fail;
+                        }
                 }
 
                 for (m = mounts; m < mounts + n; ++m) {
                         r = make_read_only(m);
-                        if (r < 0)
+                        if (r < 0) {
+                                log_struct_errno(LOG_ERR, r,
+                                                 LOG_MESSAGE_ID(SD_MESSAGE_SPAWN_FAILED),
+                                                 NULL);
                                 goto fail;
+                        }
                 }
         }
 
@@ -490,16 +537,24 @@ int setup_namespace(
                 r = mount_move_root(root_directory);
 
                 /* at this point, we cannot rollback */
-                if (r < 0)
+                if (r < 0) {
+                        log_struct_errno(LOG_ERR, r,
+                                         LOG_MESSAGE_ID(SD_MESSAGE_SPAWN_FAILED),
+                                         NULL);
                         return r;
+                }
         }
 
         /* Remount / as the desired mode. Not that this will not
          * reestablish propagation from our side to the host, since
          * what's disconnected is disconnected. */
-        if (mount(NULL, "/", NULL, mount_flags | MS_REC, NULL) < 0)
+        if (mount(NULL, "/", NULL, mount_flags | MS_REC, NULL) < 0) {
                 /* at this point, we cannot rollback */
+                log_struct_errno(LOG_ERR, -errno,
+                                 LOG_MESSAGE_ID(SD_MESSAGE_SPAWN_FAILED),
+                                 NULL);
                 return -errno;
+        }
 
         return 0;
 
