@@ -79,8 +79,14 @@ static int append_mounts(BindMount **p, char **strv, MountMode mode) {
                         (*i)++;
                 }
 
-                if (!path_is_absolute(*i))
+                if (!path_is_absolute(*i)) {
+                        log_struct_errno(LOG_ERR, -EINVAL,
+                                         LOG_MESSAGE_ID(SD_MESSAGE_SPAWN_FAILED),
+                                         LOG_MESSAGE("path %s", i),
+                                         NULL);
+
                         return -EINVAL;
+                }
 
                 (*p)->path = *i;
                 (*p)->mode = mode;
@@ -387,6 +393,7 @@ int setup_namespace(
         if (unshare(CLONE_NEWNS) < 0) {
                 log_struct_errno(LOG_ERR, -errno,
                                  LOG_MESSAGE_ID(SD_MESSAGE_SPAWN_FAILED),
+                                 LOG_MESSAGE("TEST ENTRY"),
                                  NULL);
                 return -errno;
         }
