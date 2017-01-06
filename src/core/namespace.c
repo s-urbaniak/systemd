@@ -368,7 +368,7 @@ static int make_read_only(BindMount *m) {
         if (r < 0) {
                 log_struct_errno(LOG_ERR, r,
                                  LOG_MESSAGE_ID(SD_MESSAGE_SPAWN_FAILED),
-                                 LOG_MESSAGE("make_read_only failed at %s for branchd %d", m->path, branch),
+                                 LOG_MESSAGE("make_read_only failed at %s for branch %d", m->path, branch),
                                  NULL);
         }
 

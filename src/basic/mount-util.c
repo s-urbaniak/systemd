@@ -36,6 +36,7 @@
 #include "set.h"
 #include "stdio-util.h"
 #include "string-util.h"
+#include "sd-messages.h"
 
 static int fd_fdinfo_mnt_id(int fd, const char *filename, int flags, int *mnt_id) {
         char path[strlen("/proc/self/fdinfo/") + DECIMAL_STR_MAX(int)];
@@ -382,6 +383,11 @@ int bind_remount_recursive(const char *prefix, bool ro) {
                                 continue;
                         }
 
+                        log_struct(LOG_INFO,
+                                 LOG_MESSAGE_ID(SD_MESSAGE_SPAWN_FAILED),
+                                 LOG_MESSAGE("mountinfo path %s", path),
+                                 NULL);
+
                         r = cunescape(path, UNESCAPE_RELAX, &p);
                         if (r < 0)
                                 return r;
@@ -419,6 +425,11 @@ int bind_remount_recursive(const char *prefix, bool ro) {
 
                 if (!set_contains(done, cleaned) &&
                     !set_contains(todo, cleaned)) {
+                        log_struct(LOG_INFO,
+                                   LOG_MESSAGE_ID(SD_MESSAGE_SPAWN_FAILED),
+                                   LOG_MESSAGE("mounting MS_BIND|MS_REC source %s to target (same)", cleaned),
+                                   NULL);
+
                         /* The prefix directory itself is not yet a
                          * mount, make it one. */
                         if (mount(cleaned, cleaned, NULL, MS_BIND|MS_REC, NULL) < 0)
@@ -427,6 +438,11 @@ int bind_remount_recursive(const char *prefix, bool ro) {
                         orig_flags = 0;
                         (void) get_mount_flags(cleaned, &orig_flags);
                         orig_flags &= ~MS_RDONLY;
+
+                        log_struct(LOG_INFO,
+                                   LOG_MESSAGE_ID(SD_MESSAGE_SPAWN_FAILED),
+                                   LOG_MESSAGE("remounting target %s", prefix),
+                                   NULL);
 
                         if (mount(NULL, prefix, NULL, orig_flags|MS_BIND|MS_REMOUNT|(ro ? MS_RDONLY : 0), NULL) < 0)
                                 return -errno;
