@@ -346,12 +346,15 @@ static int apply_mount(
 
 static int make_read_only(BindMount *m) {
         int r;
+        int branch;
 
         assert(m);
 
-        if (IN_SET(m->mode, INACCESSIBLE, READONLY))
+        if (IN_SET(m->mode, INACCESSIBLE, READONLY)) {
+                branch = 1;
                 r = bind_remount_recursive(m->path, true);
-        else if (IN_SET(m->mode, READWRITE, PRIVATE_TMP, PRIVATE_VAR_TMP, PRIVATE_DEV)) {
+        } else if (IN_SET(m->mode, READWRITE, PRIVATE_TMP, PRIVATE_VAR_TMP, PRIVATE_DEV)) {
+                branch = 2;
                 r = bind_remount_recursive(m->path, false);
                 if (r == 0 && m->mode == PRIVATE_DEV) /* can be readonly but the submounts can't*/
                         if (mount(NULL, m->path, NULL, MS_REMOUNT|DEV_MOUNT_OPTIONS|MS_RDONLY, NULL) < 0)
@@ -361,6 +364,13 @@ static int make_read_only(BindMount *m) {
 
         if (m->ignore && r == -ENOENT)
                 return 0;
+
+        if (r < 0) {
+                log_struct_errno(LOG_ERR, r,
+                                 LOG_MESSAGE_ID(SD_MESSAGE_SPAWN_FAILED),
+                                 LOG_MESSAGE("make_read_only failed at %s for branchd %d", m->path, branch),
+                                 NULL);
+        }
 
         return r;
 }
@@ -531,9 +541,7 @@ int setup_namespace(
                 for (m = mounts; m < mounts + n; ++m) {
                         r = make_read_only(m);
                         if (r < 0) {
-                                log_struct_errno(LOG_ERR, r,
-                                                 LOG_MESSAGE_ID(SD_MESSAGE_SPAWN_FAILED),
-                                                 NULL);
+                                // errors logged in make_read_only
                                 goto fail;
                         }
                 }
