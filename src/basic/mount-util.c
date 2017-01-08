@@ -389,8 +389,12 @@ int bind_remount_recursive(const char *prefix, bool ro) {
                                  NULL);
 
                         r = cunescape(path, UNESCAPE_RELAX, &p);
-                        if (r < 0)
+                        if (r < 0) {
+                                log_struct_errno(LOG_ERR, r,
+                                                 LOG_MESSAGE_ID(SD_MESSAGE_SPAWN_FAILED),
+                                                 NULL);
                                 return r;
+                        }
 
                         /* Let's ignore autofs mounts.  If they aren't
                          * triggered yet, we want to avoid triggering
@@ -411,8 +415,12 @@ int bind_remount_recursive(const char *prefix, bool ro) {
 
                                 if (r == -EEXIST)
                                         continue;
-                                if (r < 0)
+                                if (r < 0) {
+                                        log_struct_errno(LOG_ERR, r,
+                                                         LOG_MESSAGE_ID(SD_MESSAGE_SPAWN_FAILED),
+                                                         NULL);
                                         return r;
+                                }
                         }
                 }
 
@@ -420,8 +428,13 @@ int bind_remount_recursive(const char *prefix, bool ro) {
                  * the root is either already done, or an autofs, we
                  * are done */
                 if (set_isempty(todo) &&
-                    (top_autofs || set_contains(done, cleaned)))
+                    (top_autofs || set_contains(done, cleaned))) {
+                        log_struct(LOG_INFO,
+                                   LOG_MESSAGE_ID(SD_MESSAGE_SPAWN_FAILED),
+                                   LOG_MESSAGE("done"),
+                                   NULL);
                         return 0;
+                }
 
                 if (!set_contains(done, cleaned) &&
                     !set_contains(todo, cleaned)) {
@@ -449,7 +462,7 @@ int bind_remount_recursive(const char *prefix, bool ro) {
                                    NULL);
 
                         if (mount(NULL, prefix, NULL, orig_flags|MS_BIND|MS_REMOUNT|(ro ? MS_RDONLY : 0), NULL) < 0) {
-                                log_struct_errno(LOG_ERR, r,
+                                log_struct_errno(LOG_ERR, -errno,
                                                  LOG_MESSAGE_ID(SD_MESSAGE_SPAWN_FAILED),
                                                  NULL);
                                 return -errno;
