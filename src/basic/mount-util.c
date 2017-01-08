@@ -432,8 +432,12 @@ int bind_remount_recursive(const char *prefix, bool ro) {
 
                         /* The prefix directory itself is not yet a
                          * mount, make it one. */
-                        if (mount(cleaned, cleaned, NULL, MS_BIND|MS_REC, NULL) < 0)
+                        if (mount(cleaned, cleaned, NULL, MS_BIND|MS_REC, NULL) < 0) {
+                                log_struct_errno(LOG_ERR, -errno,
+                                                 LOG_MESSAGE_ID(SD_MESSAGE_SPAWN_FAILED),
+                                                 NULL);
                                 return -errno;
+                        }
 
                         orig_flags = 0;
                         (void) get_mount_flags(cleaned, &orig_flags);
@@ -444,16 +448,29 @@ int bind_remount_recursive(const char *prefix, bool ro) {
                                    LOG_MESSAGE("remounting target %s", prefix),
                                    NULL);
 
-                        if (mount(NULL, prefix, NULL, orig_flags|MS_BIND|MS_REMOUNT|(ro ? MS_RDONLY : 0), NULL) < 0)
+                        if (mount(NULL, prefix, NULL, orig_flags|MS_BIND|MS_REMOUNT|(ro ? MS_RDONLY : 0), NULL) < 0) {
+                                log_struct_errno(LOG_ERR, r,
+                                                 LOG_MESSAGE_ID(SD_MESSAGE_SPAWN_FAILED),
+                                                 NULL);
                                 return -errno;
+                        }
 
                         x = strdup(cleaned);
-                        if (!x)
+                        if (!x) {
+                                log_struct_errno(LOG_ERR, -ENOMEM,
+                                                 LOG_MESSAGE_ID(SD_MESSAGE_SPAWN_FAILED),
+                                                 NULL);
                                 return -ENOMEM;
+                        }
 
                         r = set_consume(done, x);
-                        if (r < 0)
+                        if (r < 0) {
+                                log_struct_errno(LOG_ERR, r,
+                                                 LOG_MESSAGE_ID(SD_MESSAGE_SPAWN_FAILED),
+                                                 LOG_MESSAGE("set_consume failed for %s", x),
+                                                 NULL);
                                 return r;
+                        }
                 }
 
                 while ((x = set_steal_first(todo))) {
@@ -461,24 +478,39 @@ int bind_remount_recursive(const char *prefix, bool ro) {
                         r = set_consume(done, x);
                         if (r == -EEXIST || r == 0)
                                 continue;
-                        if (r < 0)
+                        if (r < 0) {
+                                log_struct_errno(LOG_ERR, r,
+                                                 LOG_MESSAGE_ID(SD_MESSAGE_SPAWN_FAILED),
+                                                 LOG_MESSAGE("set_consume failed for %s", x),
+                                                 NULL);
                                 return r;
+                        }
 
                         /* Deal with mount points that are obstructed by a
                          * later mount */
                         r = path_is_mount_point(x, 0);
                         if (r == -ENOENT || r == 0)
                                 continue;
-                        if (r < 0)
+                        if (r < 0) {
+                                log_struct_errno(LOG_ERR, r,
+                                                 LOG_MESSAGE_ID(SD_MESSAGE_SPAWN_FAILED),
+                                                 LOG_MESSAGE("path_is_mount_point failed for %s", x),
+                                                 NULL);
                                 return r;
+                        }
 
                         /* Try to reuse the original flag set */
                         orig_flags = 0;
                         (void) get_mount_flags(x, &orig_flags);
                         orig_flags &= ~MS_RDONLY;
 
-                        if (mount(NULL, x, NULL, orig_flags|MS_BIND|MS_REMOUNT|(ro ? MS_RDONLY : 0), NULL) < 0)
+                        if (mount(NULL, x, NULL, orig_flags|MS_BIND|MS_REMOUNT|(ro ? MS_RDONLY : 0), NULL) < 0) {
+                                log_struct_errno(LOG_ERR, -errno,
+                                                 LOG_MESSAGE_ID(SD_MESSAGE_SPAWN_FAILED),
+                                                 LOG_MESSAGE("remount failed for %s", x),
+                                                 NULL);
                                 return -errno;
+                        }
 
                 }
         }
